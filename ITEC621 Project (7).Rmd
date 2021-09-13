@@ -1,0 +1,147 @@
+---
+title: "ITEC 621 Project"
+output: 
+  word_document:
+     toc: true
+     toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+setwd("~/OneDrive - american.edu/R Workshop")
+library(readr)
+Covid <- read_csv("cleaned_COVID_dataframe_4_7_2021.csv")
+library(psych)
+
+#Descriptive Analytics
+library(ggplot2)
+options(scipen="4")
+aov(inpatient_beds_used_covid~state, data=Covid)
+aov(inpatient_beds_used_covid~date, data=Covid)
+boxplot(inpatient_beds_used_covid~state, data=Covid)
+
+summary(aov(Covid$inpatient_beds_used_covid~Covid$inpatient_beds))
+summary(aov(Covid$inpatient_beds_used_covid~Covid$inpatient_beds_used))
+summary(aov(Covid$inpatient_beds_used_covid~Covid$new_positive_cases_reported))
+
+
+library(plm) #Panel Data Forecasting
+plmwithin <- plm(inpatient_beds_used_covid~inpatient_beds+inpatient_beds_used+new_positive_cases_reported, index=c("state","date"), data=Covid, model="within")
+summary(plmwithin) 
+#From the regression model we can see that all three variables are statistically significant in the fixed effect regression model. Then we need to find how those predictors affect the inpatient beds usage for covid cases across states.
+fixef(plmwithin) #fixed effects
+#From the fixed effects we can see that states with positive number has high inpatient beds demand for covid-19 patients compare to states with negative numbers. For example, states like CA, GA, NY, TX has especially high demands for inpatient beds with the fixed effects of over 1000. In contrast, states like MN, UT, WI has low covid inpatient bed demand with number of -632.135, -517.501 and -448.657 respectively.
+summary(fixef(plmwithin)) 
+twoway<- plm(inpatient_beds_used_covid~inpatient_beds+inpatient_beds_used+new_positive_cases_reported, index=c("state","date"), data=Covid, model="within", effect="time")
+
+
+AK <- subset(Covid, state=="AK")
+plot(AK$inpatient_beds_used_covid, type='l')
+AL <- subset(Covid, state=="AL")
+plot(AL$inpatient_beds_used_covid, type='l')
+AR <- subset(Covid, state=="AR")
+plot(AR$inpatient_beds_used_covid, type='l')
+AZ <- subset(Covid, state=="AZ")
+plot(AZ$inpatient_beds_used_covid, type='l')
+CA <- subset(Covid, state=="CA")
+CO <- subset(Covid, state=="CO")
+CT <- subset(Covid, state=="CT")
+DC <- subset(Covid, state=="DC")
+DE <- subset(Covid, state=="DE")
+FL <- subset(Covid, state=="FL")
+GA <- subset(Covid, state=="GA")
+HI <- subset(Covid, state=="HI")
+ID <- subset(Covid, state=="ID")
+IL <- subset(Covid, state=="IL")
+IN <- subset(Covid, state=="IN")
+KS <- subset(Covid, state=="KS")
+KY <- subset(Covid, state=="KY")
+LA <- subset(Covid, state=="LA")
+MA <- subset(Covid, state=="MA")
+MD <- subset(Covid, state=="MD")
+ME <- subset(Covid, state=="ME")
+MI <- subset(Covid, state=="MI")
+MN <- subset(Covid, state=="MN")
+MO <- subset(Covid, state=="MO")
+MS <- subset(Covid, state=="MS")
+MT <- subset(Covid, state=="MT")
+NC <- subset(Covid, state=="NC")
+ND <- subset(Covid, state=="ND")
+NE <- subset(Covid, state=="NE")
+NH <- subset(Covid, state=="NH")
+NJ <- subset(Covid, state=="NJ")
+NM <- subset(Covid, state=="NM")
+NV <- subset(Covid, state=="NV")
+NY <- subset(Covid, state=="NY")
+OH <- subset(Covid, state=="OH")
+OK <- subset(Covid, state=="OK")
+OR <- subset(Covid, state=="OR")
+PA <- subset(Covid, state=="PA")
+PR <- subset(Covid, state=="PR")
+RI <- subset(Covid, state=="RI")
+SC <- subset(Covid, state=="SC")
+SD <- subset(Covid, state=="SD")
+TN <- subset(Covid, state=="TN")
+TX <- subset(Covid, state=="TX")
+UT <- subset(Covid, state=="UT")
+VA <- subset(Covid, state=="VA")
+VT <- subset(Covid, state=="VT")
+WA <- subset(Covid, state=="WA")
+WI <- subset(Covid, state=="WI")
+WV <- subset(Covid, state=="WV")
+WY <- subset(Covid, state=="WY")
+VI <- subset(Covid, state=="VI")
+
+
+library(glmnet) #Ridge Model
+MD=na.omit(MD) 
+options(scipen=4)
+x <- model.matrix(inpatient_beds_used_covid ~ inpatient_beds +inpatient_beds_used+ new_positive_cases_reported, data=MD)[,-1]
+y <- MD$inpatient_beds_used_covid
+ridge.mod <- glmnet(x, y, alpha=0)
+plot(ridge.mod, label=T)
+
+set.seed(1)
+cv.10Fold <- cv.glmnet(x,y,alpha=0)
+cbind("Lambda"=cv.10Fold$lambda, "10-Fold MSE"=cv.10Fold$cvm)
+plot(cv.10Fold)
+
+best.lambda <- cv.10Fold$lambda.min 
+log(best.lambda)
+min.mse <- min(cv.10Fold$cvm)
+cbind("Best Lambda"=best.lambda, 
+      "Log(Lambda)"=log(best.lambda), 
+      "Best 10FCV MSE" = min.mse)
+
+predict(ridge.mod, s=best.lambda, type="coefficients")
+set.seed(1)
+test=sample(1:nrow(x), 0.90*nrow(x))
+ridge.pred <- predict(ridge.mod, s=best.lambda, newx=x[test,])
+plot(ridge.pred)
+new_data <- merge(ridge.pred,MD, by=0)
+
+library(tidyverse)
+my_data <- as_tibble(new_data)
+my_data <- my_data %>% 
+  rename(
+    inpatient_beds_used_covid_fixed='1')
+
+write_csv(my_data, "my_data.csv")
+
+library(forecast) #HoltWinters Time Series Prediction
+library(lubridate)
+tsmodel <- ts(my_data$inpatient_beds_used_covid, start= decimal_date(as.Date("20-03-23")), freq=14)
+HWmodel <- HoltWinters(tsmodel)
+plot(HWmodel)
+predict(HWmodel,14)
+```
+
